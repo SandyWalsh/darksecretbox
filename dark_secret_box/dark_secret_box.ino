@@ -11,6 +11,25 @@ void init_state(State* state, int i_state, int delay_ms) {
   state->delay_ms = delay_ms;
 }
 
+void dump_pin(Pin* pin) {
+  if (pin->is_output) {
+    Serial.print("Output");
+    if (pin->is_logic_level)
+      Serial.print("(ll)");
+    else
+      Serial.print("(oc)");    
+  } else
+    Serial.print("Input");
+    
+  Serial.print(" Pin: ");
+  Serial.print(pin->pin);
+  if (pin->led_pin > -1) {
+    Serial.print(", LED: ");
+    Serial.print(pin->led_pin);
+  }
+  Serial.println("");    
+}
+
 void init_pin(Pin* pin, int pin_num, int led, byte is_output, byte is_logic_level) {
   pin->pin = pin_num;
   pin->led_pin = led;
@@ -60,6 +79,7 @@ void setup() {
   for (int x = 0; x < 18; x++) {
     Pin* pin = (Pin*)malloc(sizeof(Pin));
     init_pin(pin, pin_data[x][0], pin_data[x][1], pin_data[x][2], pin_data[x][3]);
+    dump_pin(pin);
     pins[x] = pin;
     
     if (pin->is_output) {
