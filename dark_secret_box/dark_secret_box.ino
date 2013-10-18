@@ -95,8 +95,6 @@ Action pipeline[] = {{&timer, (void*)set_pin, HIGH},
 
 ActionChain this_chain;
 
-void call_action(Action* action, ActionChain* chain
-
 void process_chain(ActionChain* chain) {
   if (chain->index == -1) {
     return;
