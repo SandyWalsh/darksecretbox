@@ -73,8 +73,9 @@ void set_pin(Pin* pin, int level) {
 
 // ---- Actions ----
 
-void set_output(ActionChain* chain, int level) {
-  int index = 0;
+void set_output(ActionChain* chain, int num_args, int* args) {
+  int index = args[0];
+  int level = args[1];
   Pin* pin = pins[index];
   if (pin->is_output == false)
     return;
@@ -90,16 +91,21 @@ void wait_done(void* context) {
   chain->active_timer_id = -1;
 }
 
-void wait(ActionChain* chain, int ms) {
+void wait(ActionChain* chain, int num_args, int* args) {
+  int ms = args[0];
   chain->active_timer_id = ((Timer*)chain->timer)->after(ms, wait_done, (void*)chain);
   Serial.print("--- ms delay = ");
   Serial.println(ms);
 }
 
-Action pipeline[] = {{(void*)set_output, HIGH}, 
-                     {(void*)wait, 3000},
-                     {(void*)set_output, LOW},
-                     {(void*)0, 0}};
+int step1[] = {3, HIGH};
+int step2[] = {3000};
+int step3[] = {3, LOW};
+
+Action pipeline[] = {{(void*)set_output, 2, step1}, 
+                     {(void*)wait, 1, step2},
+                     {(void*)set_output, 2, step3},
+                     {(void*)0, 0, 0}};
 
 ActionChain this_chain;
 
@@ -111,8 +117,8 @@ void process_chain(ActionChain* chain) {
   
   Action& action = chain->actions[chain->index];
 
-  void (*hook)(ActionChain*, int) = (void (*)(ActionChain*, int)) action.action;  
-  (*hook)(chain, action.argument);
+  void (*hook)(ActionChain*, int, int*) = (void (*)(ActionChain*, int, int*)) action.action;  
+  (*hook)(chain, action.num_args, action.arguments);
   chain->index++;
   if (chain->actions[chain->index].action == 0) {
     chain->index = -1;  // End this chain.
