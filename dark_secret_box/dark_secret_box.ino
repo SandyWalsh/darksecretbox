@@ -2,6 +2,7 @@
 #include "structs.h"
 
 #include <Wire.h>
+#include <Timer.h>
 
 #define SLAVE_ADDRESS 0x04
 
@@ -72,11 +73,15 @@ void set_pin(Pin* pin, int level) {
 // ---- Actions ----
 
 void set_output(ActionChain* chain, int level) {
-  index = 0;
+  int index = 0;
   Pin* pin = pins[index];
   if (pin->is_output == false)
     return;
   set_pin(pin, level);
+  Serial.print("--- Setting pin ");
+  Serial.print(index);
+  Serial.print(" to ");
+  Serial.println(level);
 }
 
 void wait_done(void* context) {
@@ -86,29 +91,31 @@ void wait_done(void* context) {
 
 void wait(ActionChain* chain, int ms) {
   chain->active_timer_id = ((Timer*)chain->timer)->after(ms, wait_done, (void*)chain);
+  Serial.print("--- ms delay = ");
+  Serial.println(ms);
 }
 
-Action pipeline[] = {{&timer, (void*)set_pin, HIGH}, 
-                     {&timer, (void*)wait, 1000},
-                     {&timer, (void*)set_pin, LOW},
-                     {0, (void*)0, 0}};
+Action pipeline[] = {{(void*)set_output, HIGH}, 
+                     {(void*)wait, 3000},
+                     {(void*)set_output, LOW},
+                     {(void*)0, 0}};
 
 ActionChain this_chain;
 
 void process_chain(ActionChain* chain) {
-  if (chain->index == -1) {
+  // Bail if we're waiting or done ...
+  if (chain->index == -1 || chain->active_timer_id > -1) {
     return;
   }
   
   Action& action = chain->actions[chain->index];
-  
-  // If we're waiting, don't process the action.
-  if (action.active_timer_id == -1) {  
-    action.action(action.argument);
-    chain->index++;
-    if (chain->actions[chain->index].action == 0) {
-      chain->index = -1;  // End this chain.
-    }
+
+  void (*hook)(ActionChain*, int) = (void (*)(ActionChain*, int)) action.action;  
+  (*hook)(chain, action.argument);
+  chain->index++;
+  if (chain->actions[chain->index].action == 0) {
+    chain->index = -1;  // End this chain.
+    Serial.println("--- Chain finished");
   }
 }
 
@@ -141,7 +148,7 @@ void setup() {
   this_chain.actions = pipeline;
 
   for (int x = 0; x < 18; x++) {
-    set_pin(pins[x], HIGH);
+    set_pin(pins[x], LOW);
   }
     
   // define callbacks for i2c communication
