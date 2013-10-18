@@ -37,14 +37,15 @@ Pin* pins[18];
 void dump_pin(Pin* pin) {
   if (pin->is_output) {
     Serial.print("Output");
-    if (pin->is_logic_level)
-      Serial.print("(ll)");
-    else
-      Serial.print("(oc)");    
-  } else
+  } else {
     Serial.print("Input");
-    
-  Serial.print(" Pin: ");
+  }
+  if (pin->is_logic_level)
+    Serial.print(" (ll) ");
+  else
+    Serial.print(" (oc) ");    
+
+  Serial.print("Pin: ");
   Serial.print(pin->pin);
   if (pin->led_pin > -1) {
     Serial.print(", LED: ");
