@@ -143,11 +143,11 @@ Args *make_args(int num, ...)
 
 // Actions + Parameters = a Pipeline
 Action pipeline[] = {
-                      {wait_for_input_greater, make_args(2, 6, 130)}, 
-                      {set_output, make_args(2, 4, HIGH)}, 
-                      {wait, make_args(1, 3000)},
-                      {set_output, make_args(2, 4, LOW)},
-                      {0, 0}
+                      {wait_for_input_greater, make_args(2, 6, 130)}, // Wait for Pin 6 (input 1) to go > 130
+                      {set_output, make_args(2, 4, HIGH)},            // Turn on Pin 4 (output 5)
+                      {wait, make_args(1, 3000)},                     // Wait 3s
+                      {set_output, make_args(2, 4, LOW)},             // Turn off Pin 4 (output 5)
+                      {0, 0}                                          // End this chain.
                     };
 
 // A Pipeline lives in an ActionChain ...
