@@ -1,4 +1,5 @@
 #include <arduino.h>
+#include <stdarg.h>
 #include "structs.h"
 
 #include <Wire.h>
@@ -11,26 +12,19 @@ Timer timer;
 // ---- Pin control ----
 
 // pin_data is only used to initialize the "pins" array ...
-int pin_data[18][4] = { {49, 47, true, false}, // pin #, led #, is_output, is_logic_level
-                        {48, 46, true, false},
-                        {38, 45, true, false},
-                        {41, 44, true, false},
-                        {40, 43, true, false},
-                        {37, 42, true, false},
-                        
-                        {23, -1, false, true},
-                        {24, -1, false, true},
-                        {25, -1, false, true},
-                        {26, -1, false, true},
-                        {27, -1, false, true},
-                        {28, -1, false, true},                
-        
-                        {10, 39, false, false},
-                        {11, 32, false, false},
-                        {12, 33, false, false},
-                        {13, 34, false, false},
-                        {14, 35, false, false},
-                        {15, 36, false, false} };                
+int pin_data[18][4] = { {49, 47, true}, // pin #, led #, is_output
+                        {48, 46, true},
+                        {38, 45, true},
+                        {41, 44, true},
+                        {40, 43, true},
+                        {37, 42, true},
+                                
+                        {10, 39, false},
+                        {11, 32, false},
+                        {12, 33, false},
+                        {13, 34, false},
+                        {14, 35, false},
+                        {15, 36, false} };                
 
 Pin* pins[18];
 
@@ -40,11 +34,6 @@ void dump_pin(Pin* pin) {
   } else {
     Serial.print("Input");
   }
-  if (pin->is_logic_level)
-    Serial.print(" (ll) ");
-  else
-    Serial.print(" (oc) ");    
-
   Serial.print("Pin: ");
   Serial.print(pin->pin);
   if (pin->led_pin > -1) {
@@ -54,11 +43,11 @@ void dump_pin(Pin* pin) {
   Serial.println("");    
 }
 
-void init_pin(Pin* pin, int pin_num, int led, byte is_output, byte is_logic_level) {
+void init_pin(Pin* pin, int pin_num, int led, byte is_output) {
   pin->pin = pin_num;
   pin->led_pin = led;
   pin->is_output = is_output;
-  pin->is_logic_level = is_logic_level;
+  pin->last_value = 0;
 }
 
 void set_pin(Pin* pin, int level) {
@@ -71,22 +60,22 @@ void set_pin(Pin* pin, int level) {
     } 
 }
 
-int read_pin(Pin* pin) {
+void read_pin(Pin* pin) {
     if (pin->is_output) {
-      return -1;
+      return;
     }
     
     int value = analogRead(pin->pin);
     digitalWrite(pin->led_pin, value > 0);
-    return value;
+    pin->last_value = value;
 }
 
 
 // ---- Actions ----
 
-boolean set_output(ActionChain* chain, int num_args, int* args) {
-  int index = args[0];
-  int level = args[1];
+boolean set_output(ActionChain* chain, Args* args) {
+  int index = args->arguments[0];
+  int level = args->arguments[1];
   Pin* pin = pins[index];
   if (pin->is_output == false)
     return true;
@@ -104,11 +93,11 @@ void wait_done(void* context) {
   chain->timer_done = true;
 }
 
-boolean wait(ActionChain* chain, int num_args, int* args) {
+boolean wait(ActionChain* chain, Args* args) {
   if (!chain->timer_done) {
     // First time through, initialize the timer ...
     if (chain->active_timer_id == -1) {
-      int ms = args[0];
+      int ms = args->arguments[0];     
       chain->timer_done = false;
       chain->active_timer_id = ((Timer*)chain->timer)->after(ms, wait_done, (void*)chain);
       Serial.print("--- ms delay = ");
@@ -120,11 +109,11 @@ boolean wait(ActionChain* chain, int num_args, int* args) {
   return true; 
 }
 
-boolean wait_for_input_greater(ActionChain* chain, int num_args, int* args) {
-  int index = args[0];
-  int level = args[1];
+boolean wait_for_input_greater(ActionChain* chain, Args* args) {
+  int index = args->arguments[0];
+  int level = args->arguments[1];
   Pin* pin = pins[index];
-  int value = read_pin(pin);
+  int value = pin->last_value;
   
   Serial.print("--- Input Pin ");
   Serial.print(pin->pin);
@@ -134,21 +123,31 @@ boolean wait_for_input_greater(ActionChain* chain, int num_args, int* args) {
   return value > level;
 }
 
-// Parameters into the Actions
-// This has to be broken out since we can't put 
-// variable length arrays in struct initializers.
-int p_input[] = {12, 200};
-int p_on[] = {3, HIGH};
-int p_wait[] = {3000};
-int p_off[] = {3, LOW};
+// Helper function for argument creation for hardcoded chains. 
+// When we drive this from the RPi, this won't be necessary.
+Args *make_args(int num, ...)
+{
+  va_list args;
+  va_start(args, num);
+  int* list = (int*)(malloc(sizeof(int) * (num + 1)));
+  for (int x = 0; x < num; x++) {
+    list[x] = va_arg(args, int);
+  }
+  va_end(args);
+  
+  Args* a = (Args*)(malloc(sizeof(Args)));
+  a->num = num;
+  a->arguments = list;
+  return a;
+}
 
 // Actions + Parameters = a Pipeline
 Action pipeline[] = {
-                      {wait_for_input_greater, 2, p_input}, 
-                      {set_output, 2, p_on}, 
-                      {wait, 1, p_wait},
-                      {set_output, 2, p_off},
-                      {0, 0, 0}
+                      {wait_for_input_greater, make_args(2, 6, 130)}, 
+                      {set_output, make_args(2, 4, HIGH)}, 
+                      {wait, make_args(1, 3000)},
+                      {set_output, make_args(2, 4, LOW)},
+                      {0, 0}
                     };
 
 // A Pipeline lives in an ActionChain ...
@@ -163,7 +162,7 @@ void process_chain(ActionChain* chain) {
   Action& action = chain->actions[chain->index];
 
   // Call the action handler ...
-  boolean bump = (*action.action)(chain, action.num_args, action.arguments);
+  boolean bump = (*action.action)(chain, action.args);
   if (bump) {
     chain->index++;
     if (chain->actions[chain->index].action == 0) {
@@ -179,9 +178,9 @@ void setup() {
   Serial.println("Starting up DarkSecretBox. Version 0.1");
 
   // Convert pin_data to Pins ...
-  for (int x = 0; x < 18; x++) {
+  for (int x = 0; x < 12; x++) {
     Pin* pin = (Pin*)malloc(sizeof(Pin));
-    init_pin(pin, pin_data[x][0], pin_data[x][1], pin_data[x][2], pin_data[x][3]);
+    init_pin(pin, pin_data[x][0], pin_data[x][1], pin_data[x][2]);
     dump_pin(pin);
     pins[x] = pin;
     
@@ -202,7 +201,7 @@ void setup() {
   this_chain.timer_done = false;
   this_chain.actions = pipeline;
 
-  for (int x = 0; x < 18; x++) {
+  for (int x = 0; x < 12; x++) {
     set_pin(pins[x], LOW);
   }
     
@@ -214,9 +213,14 @@ void setup() {
 }
 
 void loop() {
-    delay(500);
-    timer.update();
-    process_chain(&this_chain);
+  delay(500); // For testing.    
+  for (int x = 0; x < 12; x++) {
+    if (!pins[x]->is_output) {
+        read_pin(pins[x]);
+    }
+  }       
+  timer.update();  
+  process_chain(&this_chain);
 }
 
 // ---- I2C Handlers ----

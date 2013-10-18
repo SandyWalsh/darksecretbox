@@ -8,12 +8,16 @@ typedef struct {
   Action* actions;
 } ActionChain;
 
-typedef boolean (*ActionHandler)(ActionChain*, int, int*);
+typedef struct {
+  int num;
+  int* arguments;
+} Args;
+
+typedef boolean (*ActionHandler)(ActionChain*, Args*);
 
 typedef struct Action {
   ActionHandler action;
-  int num_args;
-  int* arguments;
+  Args* args;
 } ActionType;
 
 typedef struct
@@ -21,7 +25,7 @@ typedef struct
   int pin;
   int led_pin;
   boolean is_output;
-  boolean is_logic_level;
+  int last_value;
 } Pin;
 
 
