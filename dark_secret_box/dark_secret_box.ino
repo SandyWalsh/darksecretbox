@@ -2,14 +2,36 @@
 #include "structs.h"
 
 #include <Wire.h>
-#include <Timer.h>
 
 #define SLAVE_ADDRESS 0x04
 
-void init_state(State* state, int i_state, int delay_ms) {
-  state->state = i_state;
-  state->delay_ms = delay_ms;
-}
+Timer timer;
+
+// ---- Pin control ----
+
+// pin_data is only used to initialize the "pins" array ...
+int pin_data[18][4] = { {49, 47, true, false}, // pin #, led #, is_output, is_logic_level
+                        {48, 46, true, false},
+                        {38, 45, true, false},
+                        {41, 44, true, false},
+                        {40, 43, true, false},
+                        {37, 42, true, false},
+                        
+                        {23, -1, false, true},
+                        {24, -1, false, true},
+                        {25, -1, false, true},
+                        {26, -1, false, true},
+                        {27, -1, false, true},
+                        {28, -1, false, true},                
+        
+                        {10, 39, false, false},
+                        {11, 32, false, false},
+                        {12, 33, false, false},
+                        {13, 34, false, false},
+                        {14, 35, false, false},
+                        {15, 36, false, false} };                
+
+Pin* pins[18];
 
 void dump_pin(Pin* pin) {
   if (pin->is_output) {
@@ -35,31 +57,7 @@ void init_pin(Pin* pin, int pin_num, int led, byte is_output, byte is_logic_leve
   pin->led_pin = led;
   pin->is_output = is_output;
   pin->is_logic_level = is_logic_level;
-  pin->current_state = 0;
 }
-
-int pin_data[18][4] = { {49, 47, true, false}, // pin #, led #, is_output, is_logic_level
-                        {48, 46, true, false},
-                        {38, 45, true, false},
-                        {41, 44, true, false},
-                        {40, 43, true, false},
-                        {37, 42, true, false},
-                        
-                        {23, -1, false, true},
-                        {24, -1, false, true},
-                        {25, -1, false, true},
-                        {26, -1, false, true},
-                        {27, -1, false, true},
-                        {28, -1, false, true},                
-        
-                        {10, 39, false, false},
-                        {11, 32, false, false},
-                        {12, 33, false, false},
-                        {13, 34, false, false},
-                        {14, 35, false, false},
-                        {15, 36, false, false} };                
-
-Pin* pins[18];
 
 void set_pin(Pin* pin, int level) {
     if (pin->is_output) {
@@ -71,6 +69,52 @@ void set_pin(Pin* pin, int level) {
     } 
 }
 
+// ---- Actions ----
+
+void set_output(ActionChain* chain, int level) {
+  index = 0;
+  Pin* pin = pins[index];
+  if (pin->is_output == false)
+    return;
+  set_pin(pin, level);
+}
+
+void wait_done(void* context) {
+  ActionChain* chain = (ActionChain*)context;
+  chain->active_timer_id = -1;
+}
+
+void wait(ActionChain* chain, int ms) {
+  chain->active_timer_id = ((Timer*)chain->timer)->after(ms, wait_done, (void*)chain);
+}
+
+Action pipeline[] = {{&timer, (void*)set_pin, HIGH}, 
+                     {&timer, (void*)wait, 1000},
+                     {&timer, (void*)set_pin, LOW},
+                     {0, (void*)0, 0}};
+
+ActionChain this_chain;
+
+void call_action(Action* action, ActionChain* chain
+
+void process_chain(ActionChain* chain) {
+  if (chain->index == -1) {
+    return;
+  }
+  
+  Action& action = chain->actions[chain->index];
+  
+  // If we're waiting, don't process the action.
+  if (action.active_timer_id == -1) {  
+    action.action(action.argument);
+    chain->index++;
+    if (chain->actions[chain->index].action == 0) {
+      chain->index = -1;  // End this chain.
+    }
+  }
+}
+
+// ---- Initialize ----
 void setup() {
   Serial.begin(115200);
   Serial.println("Starting up DarkSecretBox. Version 0.1");
@@ -93,6 +137,11 @@ void setup() {
     set_pin(pin, LOW); // Default everything off. 
   }
 
+  this_chain.timer = &timer;
+  this_chain.index = 0;
+  this_chain.active_timer_id = -1;
+  this_chain.actions = pipeline;
+
   for (int x = 0; x < 18; x++) {
     set_pin(pins[x], HIGH);
   }
@@ -105,9 +154,11 @@ void setup() {
 }
 
 void loop() {
-    delay(100);
+    timer.update();
+    process_chain(&this_chain);
 }
 
+// ---- I2C Handlers ----
 int number;
 
 // Callback for I2C received data ...

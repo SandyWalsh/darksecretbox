@@ -1,8 +1,14 @@
-typedef struct State
+typedef struct Action
 {
-  int state;
-  int delay_ms;
-  State *next_state;
+  void *action;
+  int argument;
+};
+
+typedef struct ActionChain {
+  void* timer; 
+  int index;
+  int active_timer_id;
+  Action* actions;
 };
 
 typedef struct Pin
@@ -11,5 +17,4 @@ typedef struct Pin
   int led_pin;
   boolean is_output;
   boolean is_logic_level;
-  State *current_state;
 };
