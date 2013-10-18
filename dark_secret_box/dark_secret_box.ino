@@ -12,7 +12,7 @@ Timer timer;
 // ---- Pin control ----
 
 // pin_data is only used to initialize the "pins" array ...
-int pin_data[18][4] = { {49, 47, true}, // pin #, led #, is_output
+int pin_data[12][3] = { {49, 47, true}, // pin #, led #, is_output
                         {48, 46, true},
                         {38, 45, true},
                         {41, 44, true},
@@ -156,18 +156,6 @@ Args *make_args(int num, ...)
   return a;
 }
 
-// Actions + Parameters = a Pipeline
-Action pipeline[] = {
-                      {wait_for_input_greater, make_args(2, IN_1, 130)}, // Wait for Input 1 to go > 130
-                      {set_output, make_args(2, OUT_5, HIGH)},           // Turn on Output 5
-                      {wait, make_args(1, 3000)},                        // Wait 3s
-                      {set_output, make_args(2, OUT_5, LOW)},            // Turn off Output 5
-                      {0, 0}                                             // End this chain.
-                    };
-
-// A Pipeline lives in an ActionChain ...
-ActionChain this_chain;
-
 void process_chain(ActionChain* chain) {
   // Bail if we're waiting or done ...
   if (chain->index == -1) {
@@ -188,6 +176,10 @@ void process_chain(ActionChain* chain) {
 }
 
 // ---- Initialize ----
+
+// Our testing chain ... eventually we'll have an array of these:
+ActionChain this_chain;
+
 void setup() {
   Serial.begin(115200);
   Serial.println("Starting up DarkSecretBox. Version 0.1");
@@ -209,6 +201,15 @@ void setup() {
     
     set_pin(pin, LOW); // Default everything off. 
   }
+
+  // Testing pipeline (this will come from RPi soon) ...
+  static Action pipeline[] = {
+                      {wait_for_input_greater, make_args(2, IN_1, 130)}, // Wait for Input 1 to go > 130
+                      {set_output, make_args(2, OUT_5, HIGH)},           // Turn on Output 5
+                      {wait, make_args(1, 3000)},                        // Wait 3s
+                      {set_output, make_args(2, OUT_5, LOW)},            // Turn off Output 5
+                      {0, 0}                                             // End this chain.
+                    };
 
   this_chain.timer = &timer;
   this_chain.index = 0;
