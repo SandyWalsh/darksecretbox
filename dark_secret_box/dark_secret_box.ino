@@ -26,7 +26,22 @@ int pin_data[18][4] = { {49, 47, true}, // pin #, led #, is_output
                         {14, 35, false},
                         {15, 36, false} };                
 
-Pin* pins[18];
+// Some consts for internal use ...
+int OUT_1 = 0;
+int OUT_2 = 1;
+int OUT_3 = 2;
+int OUT_4 = 3;
+int OUT_5 = 4;
+int OUT_6 = 5;
+
+int IN_1 = 6;
+int IN_2 = 7;
+int IN_3 = 8;
+int IN_4 = 9;
+int IN_5 = 10;
+int IN_6 = 11;
+
+Pin* pins[12];
 
 void dump_pin(Pin* pin) {
   if (pin->is_output) {
@@ -143,11 +158,11 @@ Args *make_args(int num, ...)
 
 // Actions + Parameters = a Pipeline
 Action pipeline[] = {
-                      {wait_for_input_greater, make_args(2, 6, 130)}, // Wait for Pin 6 (input 1) to go > 130
-                      {set_output, make_args(2, 4, HIGH)},            // Turn on Pin 4 (output 5)
-                      {wait, make_args(1, 3000)},                     // Wait 3s
-                      {set_output, make_args(2, 4, LOW)},             // Turn off Pin 4 (output 5)
-                      {0, 0}                                          // End this chain.
+                      {wait_for_input_greater, make_args(2, IN_1, 130)}, // Wait for Input 1 to go > 130
+                      {set_output, make_args(2, OUT_5, HIGH)},           // Turn on Output 5
+                      {wait, make_args(1, 3000)},                        // Wait 3s
+                      {set_output, make_args(2, OUT_5, LOW)},            // Turn off Output 5
+                      {0, 0}                                             // End this chain.
                     };
 
 // A Pipeline lives in an ActionChain ...
