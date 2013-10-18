@@ -71,58 +71,105 @@ void set_pin(Pin* pin, int level) {
     } 
 }
 
+int read_pin(Pin* pin) {
+    if (pin->is_output) {
+      return -1;
+    }
+    
+    int value = analogRead(pin->pin);
+    digitalWrite(pin->led_pin, value > 0);
+    return value;
+}
+
+
 // ---- Actions ----
 
-void set_output(ActionChain* chain, int num_args, int* args) {
+boolean set_output(ActionChain* chain, int num_args, int* args) {
   int index = args[0];
   int level = args[1];
   Pin* pin = pins[index];
   if (pin->is_output == false)
-    return;
+    return true;
   set_pin(pin, level);
   Serial.print("--- Setting pin ");
   Serial.print(index);
   Serial.print(" to ");
   Serial.println(level);
+  return true; 
 }
 
 void wait_done(void* context) {
   ActionChain* chain = (ActionChain*)context;
   chain->active_timer_id = -1;
+  chain->timer_done = true;
 }
 
-void wait(ActionChain* chain, int num_args, int* args) {
-  int ms = args[0];
-  chain->active_timer_id = ((Timer*)chain->timer)->after(ms, wait_done, (void*)chain);
-  Serial.print("--- ms delay = ");
-  Serial.println(ms);
+boolean wait(ActionChain* chain, int num_args, int* args) {
+  if (!chain->timer_done) {
+    // First time through, initialize the timer ...
+    if (chain->active_timer_id == -1) {
+      int ms = args[0];
+      chain->timer_done = false;
+      chain->active_timer_id = ((Timer*)chain->timer)->after(ms, wait_done, (void*)chain);
+      Serial.print("--- ms delay = ");
+      Serial.println(ms);
+    }
+    return false;
+  }
+  chain->timer_done = false; // So we can redo this action if needed.
+  return true; 
 }
 
-int step1[] = {3, HIGH};
-int step2[] = {3000};
-int step3[] = {3, LOW};
+boolean wait_for_input_greater(ActionChain* chain, int num_args, int* args) {
+  int index = args[0];
+  int level = args[1];
+  Pin* pin = pins[index];
+  int value = read_pin(pin);
+  
+  Serial.print("--- Input Pin ");
+  Serial.print(pin->pin);
+  Serial.print(" = ");
+  Serial.println(value);
+  
+  return value > level;
+}
 
-Action pipeline[] = {{(void*)set_output, 2, step1}, 
-                     {(void*)wait, 1, step2},
-                     {(void*)set_output, 2, step3},
-                     {(void*)0, 0, 0}};
+// Parameters into the Actions
+// This has to be broken out since we can't put 
+// variable length arrays in struct initializers.
+int p_input[] = {12, 200};
+int p_on[] = {3, HIGH};
+int p_wait[] = {3000};
+int p_off[] = {3, LOW};
 
+// Actions + Parameters = a Pipeline
+Action pipeline[] = {
+                      {wait_for_input_greater, 2, p_input}, 
+                      {set_output, 2, p_on}, 
+                      {wait, 1, p_wait},
+                      {set_output, 2, p_off},
+                      {0, 0, 0}
+                    };
+
+// A Pipeline lives in an ActionChain ...
 ActionChain this_chain;
 
 void process_chain(ActionChain* chain) {
   // Bail if we're waiting or done ...
-  if (chain->index == -1 || chain->active_timer_id > -1) {
+  if (chain->index == -1) {
     return;
   }
   
   Action& action = chain->actions[chain->index];
 
-  void (*hook)(ActionChain*, int, int*) = (void (*)(ActionChain*, int, int*)) action.action;  
-  (*hook)(chain, action.num_args, action.arguments);
-  chain->index++;
-  if (chain->actions[chain->index].action == 0) {
-    chain->index = -1;  // End this chain.
-    Serial.println("--- Chain finished");
+  // Call the action handler ...
+  boolean bump = (*action.action)(chain, action.num_args, action.arguments);
+  if (bump) {
+    chain->index++;
+    if (chain->actions[chain->index].action == 0) {
+      chain->index = -1;  // End this chain.
+      Serial.println("--- Chain finished");
+    }
   }
 }
 
@@ -152,6 +199,7 @@ void setup() {
   this_chain.timer = &timer;
   this_chain.index = 0;
   this_chain.active_timer_id = -1;
+  this_chain.timer_done = false;
   this_chain.actions = pipeline;
 
   for (int x = 0; x < 18; x++) {
@@ -166,6 +214,7 @@ void setup() {
 }
 
 void loop() {
+    delay(500);
     timer.update();
     process_chain(&this_chain);
 }

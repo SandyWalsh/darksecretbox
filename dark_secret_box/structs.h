@@ -1,15 +1,20 @@
-typedef struct {
-  void *action;
-  int num_args;
-  int* arguments;
-} Action;
+struct Action;
 
 typedef struct {
   void* timer; 
   int index;
   int active_timer_id;
+  boolean timer_done;
   Action* actions;
 } ActionChain;
+
+typedef boolean (*ActionHandler)(ActionChain*, int, int*);
+
+typedef struct Action {
+  ActionHandler action;
+  int num_args;
+  int* arguments;
+} ActionType;
 
 typedef struct
 {
@@ -18,3 +23,5 @@ typedef struct
   boolean is_output;
   boolean is_logic_level;
 } Pin;
+
+
