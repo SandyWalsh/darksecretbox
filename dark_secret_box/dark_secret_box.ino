@@ -8,6 +8,7 @@
 #define SLAVE_ADDRESS 0x04
 
 Timer timer;
+Sound sound;
 
 // ---- Pin control ----
 
@@ -85,8 +86,10 @@ void read_pin(Pin* pin) {
     pin->last_value = value;
 }
 
-
 // ---- Actions ----
+
+int num_chains = 3;
+ActionChain chains[10];
 
 boolean set_output(ActionChain* chain, Args* args) {
   int index = args->arguments[0];
@@ -124,9 +127,8 @@ boolean wait(ActionChain* chain, Args* args) {
   return true; 
 }
 
-boolean wait_for_input_greater(ActionChain* chain, Args* args) {
+int _get_level(ActionChain* chain, Args* args) {
   int index = args->arguments[0];
-  int level = args->arguments[1];
   Pin* pin = pins[index];
   int value = pin->last_value;
   
@@ -134,8 +136,47 @@ boolean wait_for_input_greater(ActionChain* chain, Args* args) {
   Serial.print(pin->pin);
   Serial.print(" = ");
   Serial.println(value);
-  
+  return value;
+}  
+
+boolean wait_for_input_greater(ActionChain* chain, Args* args) {
+  int level = args->arguments[1];
+  int value = _get_level(chain, args);  
   return value > level;
+}
+
+boolean wait_for_input_lessthan(ActionChain* chain, Args* args) {
+  int level = args->arguments[1];
+  int value = _get_level(chain, args);  
+  return value < level;
+}
+
+boolean restart(ActionChain* chain, Args* args) {
+    chain->index = 0;
+    return false;
+}
+
+boolean play_sound(ActionChain* chain, Args* args) {
+  sound.sound_to_play_next = args->arguments[0];
+  sound.duration_ms = args->arguments[1];
+  return true;
+}
+
+boolean reset_all(ActionChain* chain, Args* args) {
+  for (int x = 0; x < num_chains; x++) {
+    chains[x].index = 0;
+    if (chains[x].active_timer_id != -1) {
+      ((Timer*)(chains[x].timer))->stop(chains[x].active_timer_id);
+      chains[x].active_timer_id = -1;   
+    }
+    chains[x].timer_done = false;
+  }
+    
+  // Turn off all outputs
+  for (int x = 0; x < 12; x++) {
+    set_pin(pins[x], LOW);
+  }    
+  return false;
 }
 
 // Helper function for argument creation for hardcoded chains. 
@@ -177,9 +218,6 @@ void process_chain(ActionChain* chain) {
 
 // ---- Initialize ----
 
-// Our testing chain ... eventually we'll have an array of these:
-ActionChain this_chain;
-
 void setup() {
   Serial.begin(115200);
   Serial.println("Starting up DarkSecretBox. Version 0.1");
@@ -203,23 +241,57 @@ void setup() {
   }
 
   // Testing pipeline (this will come from RPi soon) ...
-  static Action pipeline[] = {
-                      {wait_for_input_greater, make_args(2, IN_1, 130)}, // Wait for Input 1 to go > 130
-                      {set_output, make_args(2, OUT_5, HIGH)},           // Turn on Output 5
-                      {wait, make_args(1, 3000)},                        // Wait 3s
-                      {set_output, make_args(2, OUT_5, LOW)},            // Turn off Output 5
-                      {0, 0}                                             // End this chain.
+  static Action pipeline_0[] = {
+                      {wait_for_input_greater, make_args(2, IN_2, 100)},  // Furthest motion sensor (input 2)
+                      {set_output, make_args(2, OUT_4, HIGH)},            // Turn on left eye (output 4)
+                      {wait, make_args(1, 250)},                          // Wait .25s          
+                      {set_output, make_args(2, OUT_5, HIGH)},            // Turn on right eye (output 5)
+                      {wait, make_args(1, 500)},                          // Wait .5s                               
+                      {set_output, make_args(2, OUT_2, HIGH)},            // Turn on growl (output 2)
+                      {wait, make_args(1, 1000)},                         // Wait 1s                               
+                      {set_output, make_args(2, OUT_2, LOW)},             // Go back to ambient sound.
+                      {0, 0}                                              // End the chain
                     };
 
-  this_chain.timer = &timer;
-  this_chain.index = 0;
-  this_chain.active_timer_id = -1;
-  this_chain.timer_done = false;
-  this_chain.actions = pipeline;
+  static Action pipeline_1[] = {
+                      {wait_for_input_greater, make_args(2, IN_4, 100)},  // Closest motion sensor (input 4)
+                      {set_output, make_args(2, OUT_1, HIGH)},            // Turn on clanger (output 1)                     
+                      {wait, make_args(1, 3000)},                         // Wait 3s
+                      {set_output, make_args(2, OUT_1, LOW)},             // Turn off clanger (output 1)                         
+                      {set_output, make_args(2, OUT_3, HIGH)},            // Turn on blower (output 3)                         
+                      {0, 0}                                              // End the chain 
+                    };
+                    
+  static Action pipeline_2[] = {
+                      {wait_for_input_greater, make_args(2, IN_3, 100)},  // Wait for reset-all button (input 3)
+                      {reset_all, make_args(1, 0)},                       // Reset all chains
+                      {0, 0}                                              // End the chain (not reached)
+                    };
+
+  chains[0].timer = &timer;
+  chains[0].index = 0;
+  chains[0].active_timer_id = -1;
+  chains[0].timer_done = false;
+  chains[0].actions = pipeline_0;
+
+  chains[1].timer = &timer;
+  chains[1].index = 0;
+  chains[1].active_timer_id = -1;
+  chains[1].timer_done = false;
+  chains[1].actions = pipeline_1;
+
+  chains[2].timer = &timer;
+  chains[2].index = 0;
+  chains[2].active_timer_id = -1;
+  chains[2].timer_done = false;
+  chains[2].actions = pipeline_2;
 
   for (int x = 0; x < 12; x++) {
     set_pin(pins[x], LOW);
   }
+
+  sound.sound_to_play_next = -1;
+  sound.duration_ms = 0;
     
   // define callbacks for i2c communication
   Wire.onReceive(receive_data);
@@ -229,31 +301,89 @@ void setup() {
 }
 
 void loop() {
-  delay(500); // For testing.    
+  delay(50); // For testing.    
   for (int x = 0; x < 12; x++) {
     if (!pins[x]->is_output) {
         read_pin(pins[x]);
     }
   }       
   timer.update();  
-  process_chain(&this_chain);
+  for (int x = 0; x < num_chains; x++) {
+    process_chain(&chains[x]);
+  }
 }
 
 // ---- I2C Handlers ----
-int number;
+
+int cmd_buffer[64];
+int cmd_index = 0;
+int cmd_expected = 0;
+int is_waiting_for_start = true;
+int is_waiting_for_end = true;
+
+int CMD_SET_OUTPUT = 1;
+int CMD_WAIT = 2;
+int CMD_GREATER = 3;
+int CMD_LESSTHAN = 4;
+int CMD_RESTART = 5;
+int CMD_SOUND = 6;
+
+// Wire format ...
+// <STX><Chain#><Action#><Command><arg><arg>...<ETX>
+int STX = 0x7E;
+int ETX = 0x7F;
+
+I2Command cmd_lengths[] = {
+                            {CMD_SET_OUTPUT, 2, set_output},
+                            {CMD_WAIT, 1, wait},
+                            {CMD_GREATER, 2, wait_for_input_greater},
+                            {CMD_LESSTHAN, 2, wait_for_input_lessthan},                           
+                            {CMD_RESTART, 1, restart},
+                            {CMD_SOUND, 2, play_sound},
+                          };
 
 // Callback for I2C received data ...
 void receive_data(int byte_count){
-
-    while(Wire.available()) {
-        number = Wire.read();
-        Serial.print("data received: ");
-        Serial.println(number);
-    }
+/*         
+  while(Wire.available()) {
+      int bite = Wire.read();
+      if (is_waiting_for_start && bite != STX) {
+        continue;
+      }
+      
+      if (is_waiting_for_end && bite != ETX) {
+        continue;
+      }
+    
+      if (bite == STX) {
+        is_waiting_for_start = false;
+        cmd_expected = 3; // <Chain#><Action#><Command>       
+        continue;
+      }
+      
+      if (bite == ETX) {
+          is_waiting_for_end = false;
+          is_waiting_for_start = true;
+          cmd_expected = 0;
+          process_command();
+      }
+      
+      if (cmd_index < cmd_expected && cmd_index < 64) {
+        cmd_buffer[cmd_index++] = num;
+      }
+      if (cmd_index => cmd_expected) {
+        cmd_expected = 1;
+      }
+        
+      Serial.print("data received: ");
+      Serial.println(number);
+  }
+  */
 }
 
 // Callback for sending data on I2C ...
 void send_data() {
-    Wire.write(number);
+  Wire.write(sound.sound_to_play_next);
+  Wire.write(sound.duration_ms);
 }
 

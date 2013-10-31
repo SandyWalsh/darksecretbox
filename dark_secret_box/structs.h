@@ -28,4 +28,17 @@ typedef struct
   int last_value;
 } Pin;
 
+typedef struct
+{
+  int sound_to_play_next;
+  int duration_ms;
+} Sound;
+
+typedef struct 
+{
+  int command;
+  int expected_bytes;
+  ActionHandler action;
+} I2Command;
+
 
